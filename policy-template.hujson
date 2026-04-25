@@ -1,0 +1,24 @@
+// tsaws starter policy. Paste into your tailnet policy file.
+// Customize tagOwners to match your admin group(s).
+{
+  "tagOwners": {
+    "tag:tsaws":              ["autogroup:admin"],
+    "tag:tsaws-service":      ["tag:tsaws"],
+    "tag:tsaws-admin-portal": ["tag:tsaws"],
+  },
+
+  // Allow all tailnet members to reach services registered by tsaws.
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["tag:tsaws-service"],
+      "ip":  ["*"],
+    },
+    // Admin-only access to the portal. Tighten src for your environment.
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:tsaws-admin-portal"],
+      "ip":  ["443"],
+    },
+  ],
+}

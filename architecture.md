@@ -48,7 +48,7 @@ Each cycle:
 | `internal/registrar` | Tailscale Services API client: OAuth token exchange, GET-before-PUT upsert, List for dry-run diff |
 | `internal/approver` | Policy-file `autoApprovers.services` reader (for bootstrap validation only) |
 | `internal/envinfer` | AWS and runtime environment inference at startup: IMDSv2, EC2 describe, ECS/EKS metadata; assembles Connector node tag list (R40) |
-| `internal/host` | tsnet node lifecycle: join tailnet, `Advertise`/`Deregister` service routes |
+| `internal/host` | tsnet node lifecycle: join tailnet, `Advertise`/`Deregister` service routes; UDP proxy via `AdvertiseUDP`/`DeregisterUDP` (opt-in, `TSAWS_UDP_ENABLED`) |
 | `internal/status` | In-memory state machine per FQDN; HTTP endpoint at `TSAWS_STATUS_ADDR` |
 | `internal/events` | Structured `log/slog` event emission; in-memory ring buffers for portal event and cycle history |
 | `internal/portal` | Read-only admin web UI served over tailnet: status, events, cycles, config, health, traffic, runtime |
@@ -60,7 +60,7 @@ Each cycle:
 ### Key design decisions
 
 - **One FQDN = one Service.** Aurora writer and reader endpoints produce separate Services.
-- **TCP only.** No L7, no protocol parsing, no credential injection. TLS passthrough for managed services.
+- **TCP primary, UDP opt-in.** Set `TSAWS_UDP_ENABLED=true` to add UDP datagram forwarding for all advertised services. No L7 routing, TLS termination, or protocol-aware proxying. TLS passthrough for managed services.
 - **Read-only IAM.** No `route53:Change*`, no EC2 mutations. Ever.
 - **Port derivation order:** SRV record value → `tailscale:port` AWS tag → managed service enrichment → TCP probe → `TSAWS_DEFAULT_PORT` → `do-not-validate` sentinel
 - **Service name:** flattened FQDN minus zone root, dots replaced with hyphens, lowercased. Collision: append 6-char hash.
@@ -84,7 +84,8 @@ The full reference is in `docs/connector-aws.md`. Key variables:
 | `TSAWS_RECONCILE_INTERVAL` | `5m` | Reconcile loop cadence |
 | `TSAWS_DRY_RUN` | `false` | Print discovered services without writing |
 | `TSAWS_PORTAL_ENABLED` | `true` | Serve admin portal as a Tailscale Service on port 443 |
-| `TSAWS_HEALTH_MODE` | `l4_tcp` | Health check protocol: `l4_tcp`, `l7_http`, or `none` |
+| `TSAWS_HEALTH_MODE` | `l4_tcp` | Health check protocol: `l4_tcp`, `l7_http`, `none`, L4.5 modes, or `auto` |
+| `TSAWS_UDP_ENABLED` | `false` | Enable UDP datagram forwarding for all advertised services |
 | `TSAWS_CONNECTOR_REGION_TAG_ENABLED` | `true` | Apply `tag:aws-region-<slug>` to Connector node (default on) |
 | `TSAWS_CONNECTOR_CUSTOM_TAGS` | — | Comma-separated additional tags applied to Connector node |
 
@@ -115,7 +116,8 @@ The full reference is in `docs/connector-aws.md`. Key variables:
 | R21: Service approval | Done — operator configures `autoApprovers.services` in policy file; Connector does not write policy file |
 | R22: Dry-run mode | Done — structured JSON output with would-create/would-update/would-skip/orphan diff |
 | R28: Service cap enforcement | Done — `TSAWS_MAX_SERVICES`, cap-exceeded state |
-| R29: Health engine | Done — L4 TCP and L7 HTTP probes, threshold-based advertisement gating |
+| R29: Health engine | Done — L4 TCP, L7 HTTP, and L4.5 protocol-aware probes (redis, postgres, mysql, kafka, mongodb, memcached, opensearch); FQDN-based auto-selection via `TSAWS_HEALTH_AUTO_PROTOCOL`; threshold-based advertisement gating |
+| R_UDP: UDP proxy | Done — opt-in UDP datagram forwarding via `TSAWS_UDP_ENABLED`; per-source flow table, idle sweep, byte counting |
 | R30: Admin portal | Done — tailnet-served UI: status, events, cycles, config, health, traffic, runtime |
 | R32: Bootstrap validation | Done — STS, Route 53 IAM, OAuth token, zone existence, identity tag declarations |
 | R33: Rate limiting | Done — token bucket for Tailscale API, configurable RPS/burst/policy-interval |

@@ -18,7 +18,7 @@ The Connector holds a single tsnet node identity on the tailnet, tagged with you
 
 ## Supported AWS services
 
-The Connector supports any TCP endpoint reachable from its subnet. For the following managed services it automatically detects the correct port from the AWS describe API:
+The Connector supports any TCP endpoint reachable from its subnet, and optionally UDP endpoints (see [UDP proxy](#udp-proxy)). For the following managed services it automatically detects the correct port from the AWS describe API:
 
 - Amazon RDS (Postgres 5432, MySQL/MariaDB 3306, SQL Server 1433, Oracle 1521)
 - Amazon Aurora (writer, reader, and custom endpoints each become separate Services)
@@ -305,7 +305,31 @@ Health check mode is controlled by `TSAWS_HEALTH_MODE`:
 - `l7_http`: HTTP GET to the backend. Passes on any 2xx, 3xx, or 4xx response. Path defaults to `/`; override per-resource with the `tailscale:health-path` AWS tag.
 - `none`: No health checks. Advertisement is sticky; only source removal or shutdown withdraws it.
 
+Protocol-aware L4.5 modes perform a minimal application handshake without credentials, giving a more accurate signal than a bare TCP connect for managed protocol backends:
+
+- `redis`: Sends `PING` (RESP2) and expects `+PONG`.
+- `postgres`: Sends a StartupMessage and expects any server response (including an authentication challenge).
+- `mysql`: Reads the server handshake packet (expects a 4-byte header).
+- `kafka`: Sends an ApiVersions request and reads the response length prefix.
+- `mongodb`: Sends a minimal `isMaster` OP_QUERY and reads the response header.
+- `memcached`: Sends `version\r\n` and expects `VERSION`.
+- `opensearch`: HTTPS GET to `/_cluster/health` (InsecureSkipVerify); passes on any 2xx response.
+
 Set `TSAWS_HEALTH_AUTO_L7=true` to automatically upgrade targets on ports 80, 443, 8080, or 8443 from L4 TCP to L7 HTTP checks. Targets on other ports remain L4.
+
+Set `TSAWS_HEALTH_AUTO_PROTOCOL=true` to automatically select a protocol-aware L4.5 mode based on the service FQDN when the global mode is `l4_tcp`. The FQDN is matched against known AWS managed service DNS suffixes (e.g. `.cache.amazonaws.com` selects `redis`, `.rds.amazonaws.com` selects `postgres`). Services that do not match any suffix remain on `l4_tcp`. Setting `TSAWS_HEALTH_MODE=auto` applies the same FQDN-based selection globally.
+
+Per-service overrides are applied via the `tailscale:health-mode` AWS resource tag.
+
+## UDP proxy
+
+When `TSAWS_UDP_ENABLED=true`, the Connector forwards UDP datagrams in addition to TCP connections. This is disabled by default.
+
+**How it works:** for each advertised `(service, port)` pair, the Connector calls `tsnet.ListenPacket("udp", addr)` on the node's tailnet IPv4 address. Incoming datagrams are forwarded to the backend using a per-source flow table: the first packet from a new client address creates a flow (a connected UDP socket to the backend), and subsequent packets reuse it. Flows idle for longer than `TSAWS_UDP_IDLE_TIMEOUT` (default 60s) are torn down. Byte counts are tracked in the same traffic counter as TCP.
+
+**Protocol selection is global.** When UDP is enabled, every discovered service gets UDP forwarding on its configured port. There is no per-service or per-protocol selector. Use this for workloads where all proxied services legitimately need UDP (for example, a tailnet exclusively proxying DNS resolvers or syslog endpoints). Mixed fleets (some TCP-only, some UDP) are not selectively configurable in the current release.
+
+**Upstream note:** The Tailscale Services API port format for UDP (`"udp:PORT"`) is unconfirmed. The local UDP proxy works independently of this API field; the Tailscale control plane may reject the UDP port entries until the API officially supports UDP service ports.
 
 ## Dry-run mode
 
@@ -416,12 +440,20 @@ All configuration is via environment variables. Variables are read once at start
 
 | Variable | Default | Description |
 |---|---|---|
-| `TSAWS_HEALTH_MODE` | `l4_tcp` | Health check protocol: `l4_tcp`, `l7_http`, or `none`. |
+| `TSAWS_HEALTH_MODE` | `l4_tcp` | Health check protocol: `l4_tcp`, `l7_http`, `none`, `redis`, `postgres`, `mysql`, `kafka`, `mongodb`, `memcached`, `opensearch`, or `auto`. |
 | `TSAWS_HEALTH_TIMEOUT` | `5s` | Per-probe timeout. |
 | `TSAWS_HEALTH_INTERVAL` | `30s` | Interval between probes. |
 | `TSAWS_HEALTH_UNHEALTHY_THRESHOLD` | `3` | Consecutive failures before withdrawing advertisement. |
 | `TSAWS_HEALTH_HEALTHY_THRESHOLD` | `2` | Consecutive successes before re-advertising after a failure. |
 | `TSAWS_HEALTH_AUTO_L7` | `false` | Upgrade targets on ports 80, 443, 8080, 8443 from L4 TCP to L7 HTTP checks automatically. Targets on other ports remain L4. |
+| `TSAWS_HEALTH_AUTO_PROTOCOL` | `false` | When `TSAWS_HEALTH_MODE` is `l4_tcp`, automatically select a protocol-aware L4.5 mode from the service FQDN. Services that do not match a known suffix remain on `l4_tcp`. |
+
+### UDP proxy
+
+| Variable | Default | Description |
+|---|---|---|
+| `TSAWS_UDP_ENABLED` | `false` | When `true`, forward UDP datagrams for every advertised (service, port) pair in addition to TCP. |
+| `TSAWS_UDP_IDLE_TIMEOUT` | `60s` | Flow idle timeout. Flows with no traffic for this duration are torn down. |
 
 ### Connector node tags
 
@@ -470,7 +502,7 @@ Apply these tags directly to an AWS resource to override Connector behavior for 
 | `tailscale:target=<host:port>` | Override the backend proxy target. |
 | `tailscale:description=<text>` | Override the Service description. |
 | `tailscale:tags=<tag>[,<tag>]` | Override the Tailscale ACL tags applied to this Service. |
-| `tailscale:health-mode=<mode>` | Per-Service health check mode: `l4_tcp`, `l7_http`, or `none`. |
+| `tailscale:health-mode=<mode>` | Per-Service health check mode: `l4_tcp`, `l7_http`, `none`, `redis`, `postgres`, `mysql`, `kafka`, `mongodb`, `memcached`, `opensearch`, or `auto`. |
 | `tailscale:health-path=<path>` | HTTP path for L7 health checks. Default `/`. |
 
 ## IAM permissions
@@ -526,7 +558,7 @@ The full policy with per-statement rationale is in `docs/aws-permissions.md`.
 
 ## Limitations
 
-- TCP only. UDP is not supported. L7 routing, TLS termination, and protocol-aware proxying are not performed.
+- TCP is the primary transport. UDP datagram forwarding is available as an opt-in (`TSAWS_UDP_ENABLED=true`) but applies to all discovered services globally; there is no per-service selector. L7 routing, TLS termination, and protocol-aware proxying are not performed.
 - Single VPC per Connector deployment. Cross-VPC and cross-account discovery are not supported.
 - One Route 53 FQDN equals one Tailscale Service. Aurora writer and reader endpoints become separate Services.
 - The Connector does not delete Tailscale Services when a source record is removed. Host advertisements are withdrawn; the Service object is retained. Opt-in auto-deletion is planned for a future release.

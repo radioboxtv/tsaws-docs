@@ -11,6 +11,7 @@ Public documentation for the Tailscale AWS Connector (`tsaws`).
 | [connector-aws.md](connector-aws.md) | Full deployment guide: prerequisites, Terraform/CloudFormation, eligibility, configuration reference, health checks, dry-run mode |
 | [architecture.md](architecture.md) | Architecture overview: runtime model, reconciliation loop, package layout, design decisions, M1 implementation status |
 | [aws-permissions.md](aws-permissions.md) | Minimum-privilege IAM policy for the Connector task role, with per-statement rationale |
+| [node-attr-config.md](node-attr-config.md) | Runtime config via Tailscale node-attribute cap: schema, validation, audit events, example ACL grants |
 | [policy-template.hujson](policy-template.hujson) | Starter Tailscale policy file snippet: tagOwners and grants for the Connector, Services, and admin portal |
 
 ## Quick start

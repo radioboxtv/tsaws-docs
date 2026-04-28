@@ -56,6 +56,8 @@ Each cycle:
 | `internal/imds` | EC2 IMDSv2 client for baseline identity tag population (AZ, VPC ID, account ID) |
 | `internal/lifecycle` | Bootstrap validation: STS credentials, Route 53 IAM, OAuth token, zone existence |
 | `internal/ratelimit` | Token-bucket rate limiter for Tailscale API calls; exponential backoff on 429 |
+| `internal/runtimeconfig` | Live-tunable subset (reconcile interval, max services, default port, port blocklist, globs, zone opt-in); thread-safe with coalesced change-notification channels driving ticker reset and fingerprint-cache invalidation |
+| `internal/nodeattr` | Decoder, validator, and applier for the Tailscale node-attribute config cap (`tsaws.com/config`); writes through to `runtimeconfig` |
 
 ### Key design decisions
 
@@ -121,6 +123,7 @@ The full reference is in `docs/connector-aws.md`. Key variables:
 | R30: Admin portal | Done — tailnet-served UI: status, events, cycles, config, health, traffic, runtime |
 | R32: Bootstrap validation | Done — STS, Route 53 IAM, OAuth token, zone existence, identity tag declarations |
 | R33: Rate limiting | Done — token bucket for Tailscale API, configurable RPS/burst/policy-interval |
+| R37: Node-attribute runtime config | Done — six tunables (interval, max services, default port, port blocklist, globs, zone opt-in) live-tunable via `tsaws.com/config` cap; skip-not-fail validation; non-persistent. See [node-attr-config.md](node-attr-config.md). |
 
 ## Known gaps and open issues
 

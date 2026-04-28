@@ -396,6 +396,8 @@ The Connector tags each audit log entry with `source=tsaws-connector`, making it
 
 All configuration is via environment variables. Variables are read once at startup; restart to pick up changes.
 
+A subset of these tunables (`TSAWS_RECONCILE_INTERVAL`, `TSAWS_MAX_SERVICES`, `TSAWS_DEFAULT_PORT`, `TSAWS_PORT_BLOCKLIST`, `TSAWS_GLOBS`, `TSAWS_ZONE_OPT_IN`) can also be updated at runtime via the Tailscale node-attribute capability — no restart required. See [node-attr-config.md](node-attr-config.md).
+
 ### Required
 
 | Variable | Description |
@@ -414,6 +416,7 @@ All configuration is via environment variables. Variables are read once at start
 | Variable | Default | Description |
 |---|---|---|
 | `TSAWS_CONNECTOR_TAG` | `tag:tsaws` | Tailscale ACL host tag for the Connector's tsnet node. |
+| `TSAWS_CONNECTOR_HOSTNAME` | auto | Verbatim hostname for the tsnet node. When unset, derived from region + VPC + subnet. Override only when you need deterministic per-replica hostnames; multi-replica disambiguation otherwise comes from tsnet's automatic `-2`/`-3` suffix. The hostname is also used as the `owner=` prefix in Service comments for the conflict tie-break, so changing it via the portal triggers a full reconnect. |
 | `TSAWS_TAILNET` | `-` | Tailnet name. `-` resolves to the default tailnet for the OAuth client. You do not need to set this explicitly. |
 | `TSAWS_SERVICE_TAG` | none | Single Tailscale ACL tag applied to every registered Service. When empty, falls back to `TSAWS_CONNECTOR_TAG`. Use this to apply a stable tag to all Services independent of the identity tags system (e.g. `tag:tsaws-service`). |
 
@@ -431,10 +434,14 @@ All configuration is via environment variables. Variables are read once at start
 
 | Variable | Default | Description |
 |---|---|---|
-| `TSAWS_RECONCILE_INTERVAL` | `5m` | How often the reconciliation loop runs. Minimum `1s`. |
+| `TSAWS_RECONCILE_INTERVAL` | `5m` | How often the reconciliation loop runs. Minimum `1s`. Live-tunable via the node-attribute cap; see [node-attr-config.md](node-attr-config.md). |
 | `TSAWS_STATUS_ADDR` | `:8080` | Address for the local status HTTP endpoint. |
 | `TSAWS_DRY_RUN` | `false` | When `true`, run full discovery but make no writes. |
 | `TSAWS_SHUTDOWN_DRAIN` | `30s` | Maximum time to wait for in-flight proxy connections to finish after SIGTERM/SIGINT. |
+| `TSAWS_SHUTDOWN_KEEP_SESSIONS` | `false` | When `true`, `Shutdown` skips the force-close of in-flight connections. Use during planned restarts where session continuity matters more than fast shutdown. |
+| `TSAWS_METRICS_ADDR` | none | Address for a Prometheus metrics HTTP endpoint (e.g. `:9090`). Empty disables metrics. |
+| `TSAWS_WEBHOOK_URL` | none | Outbound webhook URL: every event in the ring is POSTed here as JSON. Empty disables webhook. |
+| `TSAWS_WEBHOOK_SECRET` | none | HMAC-SHA256 secret used to sign webhook payloads (header `X-Tsaws-Signature`). |
 
 ### Health checks
 
@@ -447,6 +454,7 @@ All configuration is via environment variables. Variables are read once at start
 | `TSAWS_HEALTH_HEALTHY_THRESHOLD` | `2` | Consecutive successes before re-advertising after a failure. |
 | `TSAWS_HEALTH_AUTO_L7` | `false` | Upgrade targets on ports 80, 443, 8080, 8443 from L4 TCP to L7 HTTP checks automatically. Targets on other ports remain L4. |
 | `TSAWS_HEALTH_AUTO_PROTOCOL` | `false` | When `TSAWS_HEALTH_MODE` is `l4_tcp`, automatically select a protocol-aware L4.5 mode from the service FQDN. Services that do not match a known suffix remain on `l4_tcp`. |
+| `TSAWS_HEALTH_CONFIG_FILE` | none | Path to a JSON file persisting per-Service health-mode overrides and forced-unhealthy (drain) state across restarts. Empty keeps overrides in memory only — they are lost on restart. |
 
 ### UDP proxy
 
@@ -457,7 +465,7 @@ All configuration is via environment variables. Variables are read once at start
 
 ### Connector node tags
 
-Tag application to the tsnet node is pending activation; see the [Connector node tags](#connector-node-tags) section above.
+The Connector applies these tags automatically at startup using a greedy-with-fallback chain. Disable an individual dimension by setting its `*_ENABLED` variable to `false`. See the [Connector node tags](#connector-node-tags) section above for how the dimensions combine.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -477,7 +485,7 @@ Tag application to the tsnet node is pending activation; see the [Connector node
 |---|---|---|
 | `TSAWS_PORTAL_ENABLED` | `true` | When `false`, the Connector does not register the admin portal Service. |
 | `TSAWS_PORTAL_TAG` | `tag:tsaws-admin-portal` | Tailscale ACL tag for the admin portal Service. |
-| `TSAWS_PORTAL_VPC_ID` | none | VPC ID used in the portal Service name hash for stability across restarts. Recommended when running in a static VPC. |
+| `TSAWS_PORTAL_VPC_ID` | none | Legacy: previously used in the portal Service name hash. Since per-Connector portal Services were introduced (per-replica HA), the portal Service name is `tsaws-portal-<connectorHostname>` and this variable is no longer load-bearing. Retained for backward compatibility; safe to leave unset. |
 
 ### Rate limiting
 
@@ -489,6 +497,10 @@ Tag application to the tsnet node is pending activation; see the [Connector node
 | `TSAWS_RATELIMIT_AWS_BURST` | `100` | AWS API burst allowance. |
 | `TSAWS_RATELIMIT_ROUTE53_RPS` | `5` | Route 53 API rate limit in requests per second. |
 | `TSAWS_RATELIMIT_ROUTE53_BURST` | `10` | Route 53 API burst allowance. |
+
+### AWS context
+
+The Connector reads region from the AWS SDK chain (`AWS_REGION`, then `AWS_DEFAULT_REGION`, then EC2 instance metadata). You don't normally set these explicitly: when running on ECS Fargate / EC2 / Lambda / EKS the runtime supplies them. Override only when running outside AWS or pointing at a non-default region.
 
 ## AWS resource tags
 

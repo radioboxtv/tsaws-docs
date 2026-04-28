@@ -423,7 +423,7 @@ A subset of these tunables (`TSAWS_RECONCILE_INTERVAL`, `TSAWS_MAX_SERVICES`, `T
 | Variable | Default | Description |
 |---|---|---|
 | `TSAWS_CONNECTOR_TAG` | `tag:tsaws` | Tailscale ACL host tag for the Connector's tsnet node. |
-| `TSAWS_CONNECTOR_HOSTNAME` | auto | Verbatim hostname for the tsnet node. When unset, derived from region + VPC + subnet. Override only when you need deterministic per-replica hostnames; multi-replica disambiguation otherwise comes from tsnet's automatic `-2`/`-3` suffix. The hostname is also used as the `owner=` prefix in Service comments for the conflict tie-break, so changing it via the portal triggers a full reconnect. |
+| `TSAWS_CONNECTOR_HOSTNAME` | auto | Verbatim hostname for the tsnet node. When unset, the Connector derives `tsaws-<region>-<vpc>` plus a per-replica suffix from the first available of: subnet Name tag, AZ short form (e.g. `1a`), ECS task ARN hash, EKS pod name hash. Two replicas in the same VPC but different subnets or AZs land on distinct hostnames; tsnet's automatic `-2`/`-3` suffix is only the last resort when no suffix can be inferred. Override explicitly when you need a specific name. The hostname is also used as the `owner=` prefix in Service comments for the conflict tie-break, so changing it via the portal triggers a full reconnect. |
 | `TSAWS_TAILNET` | `-` | Tailnet name. `-` resolves to the default tailnet for the OAuth client. You do not need to set this explicitly. |
 | `TSAWS_SERVICE_TAG` | none | Single Tailscale ACL tag applied to every registered Service. When empty, falls back to `TSAWS_CONNECTOR_TAG`. Use this to apply a stable tag to all Services independent of the identity tags system (e.g. `tag:tsaws-service`). |
 

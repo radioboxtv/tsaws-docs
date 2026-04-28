@@ -37,13 +37,20 @@ Before deploying:
 
 1. A Tailscale account with Services enabled.
 2. A Tailscale OAuth client with the following scopes: `services` (write), `devices:core` (write), `auth_keys` (write). Create OAuth clients at [login.tailscale.com/admin/settings/oauth](https://login.tailscale.com/admin/settings/oauth).
-3. The Connector's host tag declared in your tailnet policy file `tagOwners`. Example:
+
+   **Tag scoping recommendation.** Scope the OAuth client to a single tag — typically `tag:tsaws`. The Connector's R35 greedy-with-fallback chain handles Service registrations under the broader policy tag set without requiring the OAuth client to own them all. A single-tag OAuth client minimises blast radius if the secret is compromised.
+
+   Do **not** grant `policy_file` write. The Connector is read-only against the tailnet policy file and never writes to it. If your existing OAuth client has `policy_file` write, the Connector will warn at startup and continue with the unused scope; reduce it on next rotation.
+3. The Connector's tags declared as `tagOwners` in your tailnet policy file. The `tag:tsaws` host tag must own `tag:tsaws-service` and `tag:tsaws-admin-portal` because the Connector mints the auth keys that place resources under those tags. Worked example:
    ```json
    "tagOwners": {
      "tag:tsaws":              ["autogroup:admin"],
-     "tag:tsaws-admin-portal": ["autogroup:admin"]
+     "tag:tsaws-service":      ["tag:tsaws"],
+     "tag:tsaws-admin-portal": ["tag:tsaws"]
    }
    ```
+
+   Connector node metadata tags (`tag:aws-region-*`, `tag:aws-vpc-*`, `tag:aws-az-*`, `tag:aws-subnet-*`, `tag:aws-account-*`, `tag:aws-cluster-*`, plus the deployment-model tag) must also be declared in `tagOwners` before the Connector node joins. See [`policy-template.hujson`](policy-template.hujson) for a complete starter template, and [Connector node tags](#connector-node-tags) for the full dimension list.
 4. An AWS VPC with at least one Route 53 private hosted zone attached to it.
 5. An IAM role for the Connector task (see [IAM permissions](#iam-permissions)).
 6. A network path from the Connector's subnet to the Tailscale control plane (see [Network topology](#network-topology)).
@@ -254,9 +261,9 @@ This authorizes any device carrying `tag:tsaws` to advertise Services under `tag
 
 ## Connector node tags
 
-> **Status:** Environment metadata inference is wired and populates log fields and the connector hostname. Tag application to the tsnet node (the `TSAWS_CONNECTOR_*_TAG_ENABLED` gates below) is implemented in `internal/envinfer` and will be activated in an upcoming release. The variables are accepted now so you can pre-configure them.
+The Connector's tsnet node is tagged at startup with metadata inferred from the AWS runtime environment. These tags identify the Connector's region, VPC, subnet, AZ, account, cluster, and deployment model. They appear on the Connector's device entry in the Tailscale admin console and can be used in tailnet ACL policy to scope access.
 
-The Connector's tsnet node will be tagged at startup with metadata from the AWS runtime environment. These tags identify the Connector's region, VPC, subnet, AZ, account, cluster, and deployment model. They appear on the Connector's device entry in the Tailscale admin console and can be used in tailnet ACL policy to scope access.
+Baseline AWS metadata tags are applied to the Connector node only, not to individual Services. Service identity stays minimal, and operators can scope ACLs by environment without exploding the per-Service tag set.
 
 All tag gates default to enabled. Set a variable to `false` to suppress that tag.
 

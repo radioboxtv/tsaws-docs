@@ -42,7 +42,7 @@ The full walkthrough with example HuJSON, Terraform, and verification commands i
 | File | Description |
 |---|---|
 | [getting-started.md](getting-started.md) | First-time setup walkthrough. Tailnet policy first, node-attr cap second, deploy last. ~10 minutes. |
-| [how-tsaws-works.md](how-tsaws-works.md) | Conceptual: runtime model, reconciliation loop, eligibility, port derivation, identity, health, safety properties. |
+| [how-tsaws-works.md](how-tsaws-works.md) | Conceptual: runtime model, discovery loop, eligibility, port derivation, identity, health, safety properties. |
 | [configuration.md](configuration.md) | Full reference. Configuration surfaces, env vars, AWS resource tags, ACL patterns A/B/C, network topology, deployment, considerations. |
 | [node-attr-config.md](node-attr-config.md) | `tsaws.com/config` capability schema, validation, audit events, example grants. |
 | [api-reference.md](api-reference.md) | Portal HTTP endpoints, status `:8080` endpoint, webhook payload schema. |

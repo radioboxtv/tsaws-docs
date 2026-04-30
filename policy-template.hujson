@@ -19,7 +19,7 @@
     "tag:tsaws-service":      ["tag:tsaws"],
     "tag:tsaws-admin-portal": ["tag:tsaws"],
 
-    // Connector AWS metadata tags (R40). Tailscale does NOT allow
+    // Connector AWS metadata tags. Tailscale does NOT allow
     // wildcards in tagOwners; enumerate the concrete tags the
     // connector will produce. Substitute your region, VPC name,
     // subnet name, AZ, account ID, and cluster name. Tag values are

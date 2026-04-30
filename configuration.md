@@ -1,6 +1,6 @@
 # Configuration reference
 
-The full set of knobs and considerations for tsaws. For a 10-minute first-time setup, see [getting-started.md](getting-started.md). For runtime model and reconciliation behavior, see [how-tsaws-works.md](how-tsaws-works.md).
+The full set of knobs and considerations for tsaws. For a 10-minute first-time setup, see [getting-started.md](getting-started.md). For runtime model and discovery loop behavior, see [how-tsaws-works.md](how-tsaws-works.md).
 
 This document is structured around the four configuration surfaces and how they layer. If you're looking for a specific variable, the [environment variable reference](#environment-variable-reference) is alphabetical-ish by section.
 
@@ -9,7 +9,7 @@ This document is structured around the four configuration surfaces and how they 
 The connector reads configuration from four places. They layer:
 
 1. **Environment variables** — read once at process startup. Sets the floor for everything except per-Service overrides. Restart required to change.
-2. **Node-attribute capability `tsaws.com/config`** — pushed via NetMap, applied each reconcile cycle. Covers ten reconciler tunables and tag overrides. Overrides matching env vars while the cap is active.
+2. **Node-attribute capability `tsaws.com/config`** — pushed via NetMap, applied each discovery cycle. Covers ten discovery-loop tunables and tag overrides. Overrides matching env vars while the cap is active.
 3. **Portal `POST /api/config/runtime`** — operator override for live experiments. Same field set as the cap. Reverts on the next NetMap push when a cap is also active.
 4. **AWS resource tags (`tailscale:*`)** — per-resource overrides. Read each cycle from the Resource Groups Tagging API.
 
@@ -61,13 +61,13 @@ The cap value is a JSON object delivered via the `tsaws.com/config` capability i
 
 | Field | Type | Effect |
 |---|---|---|
-| `refresh_rate` | string (Go duration) | Reconcile cycle cadence. Min `1s`. |
+| `refresh_rate` | string (Go duration) | Discovery cycle cadence. Min `1s`. |
 | `max_services` | int | Service cap. `0` = unlimited. |
 | `default_port` | uint16 | Last-resort port. `0` = no fallback. |
 | `port_blocklist` | uint16[] | Ports the connector refuses to register. Each `1..65535`, no duplicates. |
 | `domains` | string[] | FQDN allowlist (`path.Match` globs). |
 | `discover_all_from_zone` | bool | When `true`, every record from configured zones passes the filter. |
-| `service_tag` | string | Override the entire R35 fallback chain for new Service upserts. Must start with `tag:`. |
+| `service_tag` | string | Override the entire fallback chain for new Service upserts. Must start with `tag:`. |
 | `custom_tags` | `map[string][]string` | Per-FQDN-glob tag list. Each glob compiled via `path.Match`; each tag must start with `tag:`. |
 | `connector_tag` | string | Connector node's own tsnet identity tag. Triggers a tsnet host rebuild on change. |
 | `portal_tag` | string | Tag on the admin portal Service. Triggers a tsnet host rebuild on change. |
@@ -240,7 +240,7 @@ All tag gates default to enabled. Set a variable to `false` to suppress that tag
 
 Tag values are lowercased and non-alphanumeric runs collapse to a single hyphen. Region, AZ, and account come from EC2 IMDSv2. VPC and subnet names come from `ec2:DescribeVpcs` and `ec2:DescribeSubnets`. ECS cluster comes from the ECS task metadata endpoint. Deployment model comes from `AWS_EXECUTION_ENV`.
 
-Tag application uses the R35 greedy-with-fallback chain: if the full set is undeclared in `tagOwners`, the connector falls back to a smaller set, ultimately to `TSAWS_CONNECTOR_TAG` alone. The portal `/api/tags` and `/api/policy-snippets` endpoints surface what was applied and which declarations are missing.
+Tag application uses a greedy-with-fallback chain: if the full set is undeclared in `tagOwners`, the connector falls back to a smaller set, ultimately to `TSAWS_CONNECTOR_TAG` alone. The portal `/api/tags` and `/api/policy-snippets` endpoints surface what was applied and which declarations are missing.
 
 All tags applied to the Connector node must be declared in `tagOwners` in your tailnet policy file before the node joins. **Tailscale does not support wildcards in `tagOwners`**: enumerate concrete tag names rather than patterns like `tag:aws-region-*`. The connector's greedy-with-fallback chain handles missing declarations gracefully, so deploy first and use `/api/policy-snippets` to discover the exact list to add.
 
@@ -254,7 +254,7 @@ Three layers compose the tag set the connector applies to a registered Service:
 
 The upserted set is `{service_tag-or-fallback} ∪ {custom_tags-matches}` — unless `tailscale:tags` is present on the resource, in which case it wins.
 
-Existing Services keep their old tags until the connector re-PUTs them, which happens automatically on the next reconcile cycle when `EligibilityInputsChanged` fires (any of `domains`, `discover_all_from_zone`, `default_port`, `port_blocklist`, `service_tag`, `custom_tags`).
+Existing Services keep their old tags until the connector re-PUTs them, which happens automatically on the next discovery cycle when `EligibilityInputsChanged` fires (any of `domains`, `discover_all_from_zone`, `default_port`, `port_blocklist`, `service_tag`, `custom_tags`).
 
 ## Network topology
 
@@ -468,7 +468,7 @@ A subset of these tunables is also live-tunable via the node-attribute cap (`ref
 | Variable | Default | Description |
 |---|---|---|
 | `TSAWS_CONNECTOR_TAG` | `tag:tsaws` | Connector tsnet node ACL tag. |
-| `TSAWS_CONNECTOR_HOSTNAME` | auto | Verbatim hostname for the tsnet node. When unset, the connector derives `tsaws-<region>-<vpc>` plus a per-replica suffix from the first available of: subnet Name tag, AZ short form, ECS task ARN hash, EKS pod name hash. Two replicas in the same VPC but different subnets or AZs land on distinct hostnames; tsnet's automatic `-2`/`-3` suffix is the last resort. |
+| `TSAWS_CONNECTOR_HOSTNAME` | auto | Verbatim hostname for the tsnet node. When unset, the connector derives `ta-<suffix>-<base>-<region>`, where `suffix` is the most-unique per-replica identifier (subnet Name → SubnetID short → AZ short → ECS task hash → EKS pod hash) and `base` is the broader VPC context (VPC Name → first hosted zone → VPC ID short). Two replicas in the same VPC but different subnets or AZs land on distinct hostnames; tsnet's automatic `-2`/`-3` suffix is only the last resort when no per-replica dimension can be inferred. Clamped to 63 chars (DNS label max). The hostname is also used as the `owner=` prefix in Service comments for the conflict tie-break, so changing it via the portal triggers a full reconnect (and deletes the orphan portal Service from the previous hostname). |
 | `TSAWS_TAILNET` | `-` | Tailnet name (`-` = default for the OAuth client). |
 | `TSAWS_SERVICE_TAG` | none | Single ACL tag applied to every registered Service. Empty = falls back to `TSAWS_CONNECTOR_TAG`. |
 
@@ -486,7 +486,7 @@ A subset of these tunables is also live-tunable via the node-attribute cap (`ref
 
 | Variable | Default | Description |
 |---|---|---|
-| `TSAWS_RECONCILE_INTERVAL` | `5m` | Reconcile loop cadence. Min `1s`. |
+| `TSAWS_RECONCILE_INTERVAL` | `5m` | Discovery loop cadence. Min `1s`. |
 | `TSAWS_STATUS_ADDR` | `:8080` | Local in-VPC status HTTP endpoint. |
 | `TSAWS_DRY_RUN` | `false` | Run full discovery; make no writes. |
 | `TSAWS_SHUTDOWN_DRAIN` | `30s` | Maximum time to wait for in-flight proxy connections after SIGTERM. |
@@ -572,6 +572,8 @@ If your existing OAuth client carries `policy_file` write scope, the connector w
 ### Service retention vs. deletion
 
 When a source DNS record disappears, the connector withdraws the host advertisement but retains the Tailscale Service object. Auto-deletion is opt-in and disabled by default. The Service shows in `orphaned` state in the portal until you manually delete it, or until you opt in to auto-deletion.
+
+The admin portal Service (`ta-portal-<connectorHostname>`) is the one exception: the connector deletes it on graceful shutdown, and on a hostname or `connector_tag` change it deletes the orphan portal Service registered under the previous hostname. Data-plane Services are never auto-deleted by the connector.
 
 ### Tag declaration order
 

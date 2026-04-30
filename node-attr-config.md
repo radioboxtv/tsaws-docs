@@ -1,7 +1,7 @@
 # Node-attribute runtime config
 
 The connector subscribes to the IPN bus and applies a Tailscale node-attribute
-capability on every NetMap push. Six reconciler tunables and four tag-config
+capability on every NetMap push. Six discovery-loop tunables and four tag-config
 fields can be updated by ACL grant without redeploying the connector.
 
 ## Capability key
@@ -28,12 +28,12 @@ treated as "not provided" by the cap (use the portal API to clear).
 | [`port_blocklist`](#port_blocklist) | uint16[] | yes | startup cfg |
 | [`domains`](#domains) | string[] | yes | startup cfg |
 | [`discover_all_from_zone`](#discover_all_from_zone) | bool | yes | startup cfg |
-| [`service_tag`](#service_tag) | string | yes | R35 fallback chain |
+| [`service_tag`](#service_tag) | string | yes | fallback chain |
 | [`custom_tags`](#custom_tags) | map[glob]→string[] | yes | none |
 | [`connector_tag`](#connector_tag) | string | yes (rebuild) | OAuth-derived |
 | [`portal_tag`](#portal_tag) | string | yes (rebuild) | OAuth-derived |
 
-"Live? yes" = takes effect within one reconcile cycle of the NetMap push.
+"Live? yes" = takes effect within one discovery cycle of the NetMap push.
 "Live? yes (rebuild)" = the connector tears down and re-establishes the
 tsnet node before the new value takes effect. There is a brief
 disconnection (typically under 2 seconds) for rebuild paths.
@@ -46,7 +46,7 @@ the rejected field names. The connector keeps running on prior state.
 
 ### `refresh_rate`
 
-How often the connector runs a reconciliation cycle: discover Route 53
+How often the connector runs a discovery cycle: discover Route 53
 records, evaluate eligibility filters, decide which Services to upsert
 or remove, and re-advertise hosts. Lower values make the connector
 react faster to AWS state changes; higher values reduce AWS API quota
@@ -124,8 +124,8 @@ Default: `false` (require explicit opt-in per record).
 ### `service_tag`
 
 The single Tailscale identity tag applied to every new Service the
-connector registers. When set, this **replaces the entire R35
-greedy-with-fallback chain** for new upserts on the next reconcile
+connector registers. When set, this **replaces the entire
+greedy-with-fallback chain** for new upserts on the next discovery
 cycle: the connector skips the multi-level retry and writes services
 under exactly this tag. Use to pin a custom service-level tag (e.g.
 `tag:my-team-services`) without modifying the OAuth-derived chain.
@@ -377,9 +377,9 @@ transition with `connector_tag` and `portal_tag` in the changed list.
 ## Wire-up surface
 
 The cap is consumed in `internal/nodeattr` and routed to
-`internal/runtimeconfig.Overrides`. The reconciler snapshots overrides
-once per cycle and uses the snapshot for every read in that cycle, so
-mid-cycle writes (cap or portal) take effect on the next cycle.
+`internal/runtimeconfig.Overrides`. The discovery loop snapshots
+overrides once per cycle and uses the snapshot for every read in that
+cycle, so mid-cycle writes (cap or portal) take effect on the next cycle.
 
 Three coalesced channels signal the main loop:
 

@@ -140,14 +140,14 @@ What each field does:
 | Field | Effect |
 |---|---|
 | `domains` | FQDN allowlist. A record's bare FQDN must match at least one glob to be eligible. Glob syntax: `?`, `*`, `[abc]`. |
-| `custom_tags` | Per-FQDN-glob → service tag list. The connector applies these tags during the next reconcile cycle. The map drives the per-environment ACL pattern from Step 1. |
+| `custom_tags` | Per-FQDN-glob → service tag list. The connector applies these tags during the next discovery cycle. The map drives the per-environment ACL pattern from Step 1. |
 | `port_blocklist` | Ports the connector refuses to register. The connector default is empty; this example blocks 22 (SSH) and 3389 (RDP) defensively. |
 
 The full schema (ten fields including `refresh_rate`, `max_services`, `default_port`, `service_tag`, `connector_tag`, `portal_tag`, `discover_all_from_zone`) is in [node-attr-config.md](node-attr-config.md). Add what you need; absent fields fall back to the connector's startup configuration.
 
 Substitute `example.internal` with your actual zone root. Tiered globs like `*.prod.<zone>` and `*.staging.<zone>` are the recommended starting point: they match the per-environment ACL pattern without you having to tag individual AWS resources.
 
-> **Tip.** You can edit the cap value at any time in the admin console and the connector will pick up the change within one reconcile cycle (default 5 minutes; tighten to 30s while you iterate by adding `"refresh_rate": "30s"` to the cap). No restart required.
+> **Tip.** You can edit the cap value at any time in the admin console and the connector will pick up the change within one discovery cycle (default 5 minutes; tighten to 30s while you iterate by adding `"refresh_rate": "30s"` to the cap). No restart required.
 
 ## Step 3: Stash the OAuth secret in AWS Secrets Manager
 
@@ -178,7 +178,7 @@ module "tsaws" {
 
 That's it. No `TSAWS_GLOBS`, no `TSAWS_SERVICE_TAG`, no eligibility flags. Everything the cap covers in Step 2 is omitted from the deployment. The connector reads it from the policy file at runtime.
 
-Run `terraform apply`. The container takes ~30 seconds to start, register with the tailnet, and complete its first reconcile cycle.
+Run `terraform apply`. The container takes ~30 seconds to start, register with the tailnet, and complete its first discovery cycle.
 
 If you prefer CloudFormation, use the template at `deploy/cloudformation/tsaws.yaml` with the same five inputs.
 
@@ -190,7 +190,7 @@ The connector exposes an admin portal as a Tailscale Service on port 443. Open i
 https://<connector-hostname>.<tailnet>.ts.net
 ```
 
-The hostname is auto-derived; check the Tailscale admin console for the exact name (it'll look like `tsaws-us-east-1-vpcname-1a`). If the portal loads, the connector is alive, authenticated, and serving over the tailnet.
+The hostname is auto-derived; check the Tailscale admin console for the exact name (it'll look like `ta-1a-prod-vpc-us-east-1`, with the most-unique per-replica segment first). If the portal loads, the connector is alive, authenticated, and serving over the tailnet.
 
 In the portal:
 
@@ -212,6 +212,6 @@ The Service name is the FQDN with the zone root stripped, dots replaced with hyp
 
 - **[configuration.md](configuration.md)** — full env var, AWS resource tag, and node-attr cap reference. Patterns A/B/C for ACLs (admin broad, per-environment, per-Service).
 - **[node-attr-config.md](node-attr-config.md)** — every cap field with validation rules and example grants.
-- **[how-tsaws-works.md](how-tsaws-works.md)** — runtime model, reconciliation loop, identity model, safety properties.
+- **[how-tsaws-works.md](how-tsaws-works.md)** — runtime model, discovery loop, identity model, safety properties.
 - **[api-reference.md](api-reference.md)** — every portal HTTP endpoint.
 - **[aws-permissions.md](aws-permissions.md)** — IAM policy for the connector task role with per-statement rationale.

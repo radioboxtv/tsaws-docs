@@ -1,6 +1,6 @@
 # How tsaws works
 
-A conceptual overview of the Connector's runtime model, reconciliation loop, and the design properties that follow from them. For configuration details, see [configuration.md](configuration.md). For setup, see [getting-started.md](getting-started.md).
+A conceptual overview of the Connector's runtime model, discovery loop, and the design properties that follow from them. For configuration details, see [configuration.md](configuration.md). For setup, see [getting-started.md](getting-started.md).
 
 ## What it does
 
@@ -11,22 +11,22 @@ A conceptual overview of the Connector's runtime model, reconciliation loop, and
 ```
 VPC (private subnet, NAT egress)
 ├── ECS Fargate task: tsaws-az1  (AZ a)
-│   ├── tsnet node    joins tailnet as tag:tsaws, advertises Service Host routes
-│   ├── reconciler    runs every N minutes (default 5m)
-│   ├── portal        admin UI on port 443 over the tailnet
-│   └── status HTTP   :8080 in-VPC health and state endpoint
+│   ├── tsnet node      joins tailnet as tag:tsaws, advertises Service Host routes
+│   ├── discovery loop  runs every N minutes (default 5m)
+│   ├── portal          admin UI on port 443 over the tailnet
+│   └── status HTTP     :8080 in-VPC health and state endpoint
 └── ECS Fargate task: tsaws-az2  (AZ b, optional, for HA)
-    ├── tsnet node    same tailnet, same Services, different host
-    ├── reconciler    idempotent, converges to the same Service set
-    ├── portal        per-replica portal Service
-    └── status HTTP   :8080
+    ├── tsnet node      same tailnet, same Services, different host
+    ├── discovery loop  idempotent, converges to the same Service set
+    ├── portal          per-replica portal Service
+    └── status HTTP     :8080
 ```
 
 The process is a single static Go binary. It uses `tailscale.com/tsnet` to embed a Tailscale node directly with no sidecar `tailscaled`. Authentication is via a scoped OAuth client secret (`TS_CLIENT_SECRET`), exchanged at runtime for a short-lived access token.
 
 For HA, run two independent replicas in separate Availability Zones. Both register the same Services idempotently; the Tailscale control plane tracks all active hosts and routes tailnet connections to a healthy one. See [configuration.md](configuration.md) for the Terraform pattern.
 
-## Reconciliation loop
+## Discovery loop
 
 Each cycle the Connector:
 
@@ -37,7 +37,7 @@ Each cycle the Connector:
 5. **Registers**. Upserts the Service in the Tailscale control plane via `PUT /api/v2/tailnet/{tailnet}/services/svc:{name}`. The registrar uses GET-before-PUT to satisfy the API constraint that updates must include existing IPv4 and IPv6 addresses.
 6. **Advertises**. Calls `host.Advertise` on the tsnet node for each `(service, port)` pair. Pairs that disappeared since the last cycle are deregistered. The Service object itself is retained.
 
-Cycles are idempotent. Two replicas reconciling in parallel converge to the same Service set; concurrent upserts are safe through ETag-based retry.
+Cycles are idempotent. Two replicas running in parallel converge to the same Service set; concurrent upserts are safe through ETag-based retry.
 
 ## Eligibility
 
@@ -90,7 +90,7 @@ The connector node is also tagged with AWS metadata at startup:
 
 These are applied to the Connector node only, not to individual Services. Service identity stays minimal so operators can scope ACLs by environment without exploding the per-Service tag set. Apply per-Service tags via `custom_tags` in the node-attribute cap (FQDN-glob → tag list mapping); see [configuration.md](configuration.md#acl-patterns).
 
-Tag application uses the R35 greedy-with-fallback chain: if the full set is undeclared in `tagOwners`, the connector falls back to a smaller set, ultimately to the connector tag alone. The portal `/api/tags` and `/api/policy-snippets` endpoints surface what was applied and which declarations are missing.
+Tag application uses a greedy-with-fallback chain: if the full set is undeclared in `tagOwners`, the connector falls back to a smaller set, ultimately to the connector tag alone. The portal `/api/tags` and `/api/policy-snippets` endpoints surface what was applied and which declarations are missing.
 
 ## Health engine
 
@@ -136,7 +136,7 @@ These hold by design:
 - **Read-only IAM**. The connector requires only `route53:List*`, `route53:GetHostedZone`, `ec2:Describe*`, `elasticloadbalancing:Describe*`, the managed-service `Describe*` actions, and `tag:GetResources`. No `route53:Change*`, no EC2 mutations, no IAM mutations. Ever. See [aws-permissions.md](aws-permissions.md).
 - **No `policy_file` write OAuth scope**. The connector reads the tailnet policy file for bootstrap validation but never writes. Operators author `autoApprovers.services` themselves once, before deployment.
 - **GET-before-PUT**. Service upserts always fetch the current addrs before writing, so concurrent replicas converge without overwriting each other.
-- **Deregister, do not delete**. When a source DNS record disappears, the host advertisement is withdrawn but the Tailscale Service object is retained. Auto-deletion is opt-in and disabled by default.
+- **Deregister, do not delete**. When a source DNS record disappears, the host advertisement is withdrawn but the Tailscale Service object is retained. Auto-deletion is opt-in and disabled by default. The admin portal Service is the one exception: it is deleted on graceful shutdown, and the orphan portal Service from a prior hostname is deleted when an operator changes `connector_tag` or the connector hostname.
 - **Skip-not-fail validation**. Cap and runtime config validation drops invalid fields rather than rejecting the whole update. The connector keeps running on prior state.
 
 ## Implementation status
@@ -165,7 +165,7 @@ These hold by design:
 | R37 Node-attribute runtime config | Done — ten cap fields, skip-not-fail validation |
 | R40 Connector node tags | Done — region, AZ, VPC, subnet, account, cluster, deployment |
 | R\_UDP UDP proxy | Done — opt-in, per-source flow table |
-| R38 Hostname replica suffix | Done — distinct hostname per replica from subnet, AZ, ECS task ARN, or pod name |
+| R38 Hostname replica suffix | Done — `ta-<suffix>-<base>-<region>` shape; suffix from subnet Name, SubnetID, AZ, ECS task ARN, or EKS pod name; 63-char DNS-label budget |
 
 Tracked but not in scope:
 

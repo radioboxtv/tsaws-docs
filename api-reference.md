@@ -41,7 +41,7 @@ States: `eligible`, `registered`, `degraded`, `ineligible`, `deleted-from-source
 
 ### `GET /api/discovery`
 
-Per-Route-53-zone breakdown with per-record decisions and reason counts from the most recent reconcile cycle.
+Per-Route-53-zone breakdown with per-record decisions and reason counts from the most recent discovery cycle.
 
 ```jsonc
 {
@@ -64,7 +64,7 @@ Use this when a record you expect to register isn't appearing: the per-record re
 
 ### `GET /api/cycles`
 
-The last 20 reconciliation cycles.
+The last 20 discovery cycles.
 
 ```jsonc
 {
@@ -89,7 +89,7 @@ The event ring (last 500 events, newest first).
 Query parameters:
 
 - `kind` — filter by event kind (e.g. `?kind=ServiceCreated`)
-- `correlation_id` — filter to a single reconcile cycle (e.g. `?correlation_id=01HX...`)
+- `correlation_id` — filter to a single discovery cycle (e.g. `?correlation_id=01HX...`)
 
 Event kinds include `ServiceCreated`, `ServiceUpdated`, `ServiceReused`, `ServiceHostRegistered`, `HealthCheckFailed`, `HealthCheckRecovered`, `ReconciliationCompleted`, `CapExceeded`, `NodeAttrFetchFailed`, `ConfigChangedFromNodeAttr`.
 
@@ -160,7 +160,7 @@ If a `tsaws.com/config` cap is also active, the next NetMap push will overwrite 
 Override the tsnet hostname. Triggers a tsnet host rebuild and brief tailnet disconnection (typically under 2 seconds). Body:
 
 ```jsonc
-{ "hostname": "tsaws-prod-customer-vpc" }
+{ "hostname": "ta-prod-customer-vpc" }
 ```
 
 ### `GET /api/tags`
@@ -191,7 +191,7 @@ HuJSON repair snippets for any tag the connector found undeclared in the policy 
 
 ### `POST /api/tags/retry`
 
-Re-check tag availability against the latest policy file and re-run the reconciler. Use after editing `tagOwners` to apply tags that were previously rejected, without waiting for the next NetMap push.
+Re-check tag availability against the latest policy file and re-run discovery. Use after editing `tagOwners` to apply tags that were previously rejected, without waiting for the next NetMap push.
 
 ## Per-Service health
 

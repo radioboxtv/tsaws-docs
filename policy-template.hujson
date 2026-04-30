@@ -1,24 +1,98 @@
-// tsaws starter policy. Paste into your tailnet policy file.
-// Customize tagOwners to match your admin group(s).
+// tsaws starter policy. Paste into your tailnet policy file and customize:
+//   - tagOwners admin owners (replace autogroup:admin)
+//   - groups (declare or remove the example groups)
+//   - the tsaws.com/config cap value (your FQDN globs and per-environment tags)
+//
+// This template demonstrates three patterns layered together:
+//   1. Admin pattern: full reach to every registered service plus the portal
+//   2. Non-admin per-environment pattern: scope reach by env tag (devs vs SRE)
+//   3. Node-attribute config: who can tune the connector at runtime
 {
+  "groups": {
+    // Example groups. Replace with your own membership or remove.
+    "group:devs": ["alice@example.com", "bob@example.com"],
+    "group:sre":  ["carol@example.com"],
+  },
+
   "tagOwners": {
     "tag:tsaws":              ["autogroup:admin"],
     "tag:tsaws-service":      ["tag:tsaws"],
     "tag:tsaws-admin-portal": ["tag:tsaws"],
+
+    // Connector AWS metadata tags (R40). Declare every tag the connector
+    // may apply, even if you do not gate ACLs on them yet. Untagged tags
+    // are silently dropped by the connector's greedy-with-fallback chain.
+    "tag:aws-region-*":    ["tag:tsaws"],
+    "tag:aws-vpc-*":       ["tag:tsaws"],
+    "tag:aws-subnet-*":    ["tag:tsaws"],
+    "tag:aws-az-*":        ["tag:tsaws"],
+    "tag:aws-account-*":   ["tag:tsaws"],
+    "tag:aws-cluster-*":   ["tag:tsaws"],
+    "tag:aws-ecs-fargate": ["tag:tsaws"],
+
+    // Per-environment service tags applied via custom_tags in the cap below.
+    "tag:env-prod":    ["tag:tsaws"],
+    "tag:env-staging": ["tag:tsaws"],
   },
 
-  // Allow all tailnet members to reach services registered by tsaws.
+  // Required for the connector to advertise services without manual approval.
+  "autoApprovers": {
+    "services": {
+      "tag:tsaws-service": ["tag:tsaws"],
+    },
+  },
+
   "grants": [
+    // ── Pattern 1: Admin pattern ───────────────────────────────────────────
+    // Full reach to every registered service plus the portal.
     {
-      "src": ["autogroup:member"],
+      "src": ["autogroup:admin"],
       "dst": ["tag:tsaws-service"],
       "ip":  ["*"],
     },
-    // Admin-only access to the portal. Tighten src for your environment.
     {
       "src": ["autogroup:admin"],
       "dst": ["tag:tsaws-admin-portal"],
       "ip":  ["443"],
+    },
+
+    // ── Pattern 2: Non-admin per-environment pattern ───────────────────────
+    // Scope reach by environment tag. Pair with custom_tags below: the
+    // connector tags each Service tag:env-prod or tag:env-staging based
+    // on its FQDN, and these grants then control who can reach what.
+    //
+    // For one-tag-per-backend granularity (Pattern C in configuration.md),
+    // use the tailscale:tags AWS resource tag and grant per service tag.
+    {
+      "src": ["group:devs"],
+      "dst": ["tag:env-staging"],
+      "ip":  ["*"],
+    },
+    {
+      "src": ["group:sre"],
+      "dst": ["tag:env-prod", "tag:env-staging"],
+      "ip":  ["*"],
+    },
+
+    // ── Pattern 3: Node-attribute config ───────────────────────────────────
+    // Who can tune the connector at runtime via tsaws.com/config.
+    // Edit the cap value to add globs and tag mappings without redeploying.
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:tsaws"],
+      "app": {
+        "tsaws.com/config": [{
+          "domains": [
+            "*.prod.example.internal",
+            "*.staging.example.internal",
+          ],
+          "custom_tags": {
+            "*.prod.example.internal":    ["tag:env-prod"],
+            "*.staging.example.internal": ["tag:env-staging"],
+          },
+          "port_blocklist": [22, 3389],
+        }],
+      },
     },
   ],
 }

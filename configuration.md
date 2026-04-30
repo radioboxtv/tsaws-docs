@@ -236,13 +236,13 @@ All tag gates default to enabled. Set a variable to `false` to suppress that tag
 | `TSAWS_CONNECTOR_CLUSTER_TAG_ENABLED` | `true` | `tag:aws-cluster-<name>` (ECS or EKS cluster name) |
 | `TSAWS_CONNECTOR_DEPLOYMENT_TAG_ENABLED` | `true` | `tag:aws-ecs-fargate`, `tag:aws-ecs-ec2`, `tag:aws-ec2`, `tag:aws-eks`, or `tag:aws-lambda` |
 | `TSAWS_CONNECTOR_CUSTOM_TAGS` | none | Comma-separated additional tags applied unconditionally |
-| `TSAWS_EKS_CLUSTER_NAME` | none | Required for `tag:aws-cluster-*` on EKS (not derivable from IMDS) |
+| `TSAWS_EKS_CLUSTER_NAME` | none | Required for `tag:aws-cluster-<name>` on EKS (not derivable from IMDS) |
 
 Tag values are lowercased and non-alphanumeric runs collapse to a single hyphen. Region, AZ, and account come from EC2 IMDSv2. VPC and subnet names come from `ec2:DescribeVpcs` and `ec2:DescribeSubnets`. ECS cluster comes from the ECS task metadata endpoint. Deployment model comes from `AWS_EXECUTION_ENV`.
 
 Tag application uses the R35 greedy-with-fallback chain: if the full set is undeclared in `tagOwners`, the connector falls back to a smaller set, ultimately to `TSAWS_CONNECTOR_TAG` alone. The portal `/api/tags` and `/api/policy-snippets` endpoints surface what was applied and which declarations are missing.
 
-All tags applied to the Connector node must be declared in `tagOwners` in your tailnet policy file before the node joins.
+All tags applied to the Connector node must be declared in `tagOwners` in your tailnet policy file before the node joins. **Tailscale does not support wildcards in `tagOwners`**: enumerate concrete tag names rather than patterns like `tag:aws-region-*`. The connector's greedy-with-fallback chain handles missing declarations gracefully, so deploy first and use `/api/policy-snippets` to discover the exact list to add.
 
 ## Service identity tags
 
@@ -528,7 +528,7 @@ A subset of these tunables is also live-tunable via the node-attribute cap (`ref
 | `TSAWS_CONNECTOR_CLUSTER_TAG_ENABLED` | `true` | Apply `tag:aws-cluster-<name>`. |
 | `TSAWS_CONNECTOR_DEPLOYMENT_TAG_ENABLED` | `true` | Apply runtime deployment tag. |
 | `TSAWS_CONNECTOR_CUSTOM_TAGS` | none | Comma-separated additional tags. |
-| `TSAWS_EKS_CLUSTER_NAME` | none | EKS cluster name (required for `tag:aws-cluster-*` on EKS). |
+| `TSAWS_EKS_CLUSTER_NAME` | none | EKS cluster name (required for `tag:aws-cluster-<name>` on EKS). |
 
 ### Admin portal
 
@@ -576,6 +576,8 @@ When a source DNS record disappears, the connector withdraws the host advertisem
 ### Tag declaration order
 
 Declare every tag in `tagOwners` **before** the connector first joins. The connector uses a greedy-with-fallback chain: if it tries to claim a tag that isn't owned, it falls back to a smaller set, and the unclaimed tags simply don't appear on the node. The portal `/api/policy-snippets` endpoint generates HuJSON repair snippets for any tag the connector found undeclared.
+
+Tailscale does not support wildcards in `tagOwners`. Patterns like `tag:aws-region-*` are not valid; you must enumerate `tag:aws-region-us-east-1`, `tag:aws-region-us-west-2`, and so on. Use the `/api/policy-snippets` workflow rather than trying to predict every concrete tag value.
 
 ## Limitations
 

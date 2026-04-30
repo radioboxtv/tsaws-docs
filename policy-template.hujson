@@ -19,16 +19,25 @@
     "tag:tsaws-service":      ["tag:tsaws"],
     "tag:tsaws-admin-portal": ["tag:tsaws"],
 
-    // Connector AWS metadata tags (R40). Declare every tag the connector
-    // may apply, even if you do not gate ACLs on them yet. Untagged tags
-    // are silently dropped by the connector's greedy-with-fallback chain.
-    "tag:aws-region-*":    ["tag:tsaws"],
-    "tag:aws-vpc-*":       ["tag:tsaws"],
-    "tag:aws-subnet-*":    ["tag:tsaws"],
-    "tag:aws-az-*":        ["tag:tsaws"],
-    "tag:aws-account-*":   ["tag:tsaws"],
-    "tag:aws-cluster-*":   ["tag:tsaws"],
-    "tag:aws-ecs-fargate": ["tag:tsaws"],
+    // Connector AWS metadata tags (R40). Tailscale does NOT allow
+    // wildcards in tagOwners; enumerate the concrete tags the
+    // connector will produce. Substitute your region, VPC name,
+    // subnet name, AZ, account ID, and cluster name. Tag values are
+    // lowercased; non-alphanumeric runs collapse to single hyphens.
+    //
+    // Don't sweat getting all of these right on day one: undeclared
+    // tags are silently dropped by the connector's greedy-with-
+    // fallback chain. After first deploy, GET /api/policy-snippets in
+    // the portal returns the exact tags the connector wanted to apply
+    // but found undeclared. Paste those in, then POST /api/tags/retry
+    // to re-run.
+    "tag:aws-region-us-east-1":       ["tag:tsaws"],
+    "tag:aws-vpc-prod-vpc":           ["tag:tsaws"],
+    "tag:aws-subnet-prod-private-1a": ["tag:tsaws"],
+    "tag:aws-az-us-east-1a":          ["tag:tsaws"],
+    "tag:aws-account-123456789012":   ["tag:tsaws"],
+    "tag:aws-cluster-prod-cluster":   ["tag:tsaws"],
+    "tag:aws-ecs-fargate":            ["tag:tsaws"],
 
     // Per-environment service tags applied via custom_tags in the cap below.
     "tag:env-prod":    ["tag:tsaws"],

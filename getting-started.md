@@ -21,7 +21,9 @@ The template has four blocks:
 
 ### tagOwners
 
-Declares every tag the connector might apply. This must be in place **before** the connector node first joins, otherwise the AWS metadata tags get rejected and the connector falls back to its primary tag alone.
+Declares every tag the connector might apply. **Tailscale does not support wildcards in `tagOwners`** — every tag must be enumerated by its full name. The connector's greedy-with-fallback chain handles undeclared tags gracefully (it drops the unowned ones and falls back to a smaller set), so you can deploy first and add declarations after.
+
+Substitute the AWS-specific values below to match your region, VPC name, subnet name, AZ, account ID, and cluster name. Tag values are lowercased; non-alphanumeric runs collapse to a single hyphen. If a VPC has no Name tag, the connector substitutes the VPC ID (e.g. `tag:aws-vpc-vpc-0a1b2c3d`); same pattern for subnets.
 
 ```jsonc
 "tagOwners": {
@@ -29,20 +31,26 @@ Declares every tag the connector might apply. This must be in place **before** t
   "tag:tsaws-service":      ["tag:tsaws"],
   "tag:tsaws-admin-portal": ["tag:tsaws"],
 
-  // AWS metadata tags applied to the connector node.
-  "tag:aws-region-*":  ["tag:tsaws"],
-  "tag:aws-vpc-*":     ["tag:tsaws"],
-  "tag:aws-subnet-*":  ["tag:tsaws"],
-  "tag:aws-az-*":      ["tag:tsaws"],
-  "tag:aws-account-*": ["tag:tsaws"],
-  "tag:aws-cluster-*": ["tag:tsaws"],
-  "tag:aws-ecs-fargate": ["tag:tsaws"],
+  // AWS metadata tags applied to the connector node. Enumerate the
+  // concrete tags the connector will produce for your deployment.
+  // After first deploy, GET /api/policy-snippets in the portal returns
+  // the exact list of tags the connector wanted to apply but found
+  // undeclared, ready to paste in.
+  "tag:aws-region-us-east-1":         ["tag:tsaws"],
+  "tag:aws-vpc-prod-vpc":             ["tag:tsaws"],
+  "tag:aws-subnet-prod-private-1a":   ["tag:tsaws"],
+  "tag:aws-az-us-east-1a":            ["tag:tsaws"],
+  "tag:aws-account-123456789012":     ["tag:tsaws"],
+  "tag:aws-cluster-prod-cluster":     ["tag:tsaws"],
+  "tag:aws-ecs-fargate":              ["tag:tsaws"],
 
   // Per-environment service tags applied via custom_tags in Step 2.
   "tag:env-prod":    ["tag:tsaws"],
   "tag:env-staging": ["tag:tsaws"],
 }
 ```
+
+If you don't want the AWS metadata tags at all, disable them with `TSAWS_CONNECTOR_REGION_TAG_ENABLED=false` and the matching variables for the dimensions you don't need (see [configuration.md](configuration.md#connector-node-tags)). The connector then only applies `tag:tsaws` itself.
 
 ### autoApprovers
 

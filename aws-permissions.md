@@ -28,7 +28,7 @@ Attach this policy to the ECS task role created by the Terraform module or Cloud
         "ec2:Describe*"
       ],
       "Resource": "*",
-      "Comment": "Resolve VPC and subnet Name tags for Connector node tags (R40). Used to populate tag:aws-vpc-* and tag:aws-subnet-* on the Connector's tsnet node. All Describe* actions are read-only."
+      "Comment": "Resolve VPC and subnet Name tags for Connector node tags. Used to populate tag:aws-vpc-* and tag:aws-subnet-* on the Connector's tsnet node. All Describe* actions are read-only."
     },
     {
       "Sid": "ELBDescribe",
